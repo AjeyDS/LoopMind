@@ -3,7 +3,7 @@ import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 import { Topic, Depth } from '../src/types';
@@ -89,6 +89,17 @@ export default function RootLayout() {
         setTimeout(poll, 5000);
     }, []);
 
+    const handleDeleteTopic = useCallback(async (topicId: string) => {
+        await api.deleteTopic(topicId);
+        setTopics((prev) => {
+            const updated = prev.filter((t) => t.id !== topicId);
+            if (activeTopic?.id === topicId) {
+                setActiveTopic(updated[0] ?? null);
+            }
+            return updated;
+        });
+    }, [activeTopic]);
+
     const renderDrawerContent = useCallback(
         (props: DrawerContentComponentProps) => (
             <Sidebar
@@ -97,9 +108,10 @@ export default function RootLayout() {
                 activeTopic={activeTopic}
                 onSelectTopic={handleSelectTopic}
                 onAddTopic={handleAddTopic}
+                onDeleteTopic={handleDeleteTopic}
             />
         ),
-        [topics, activeTopic, handleSelectTopic, handleAddTopic]
+        [topics, activeTopic, handleSelectTopic, handleAddTopic, handleDeleteTopic]
     );
 
     const isGenerating = !!(
@@ -119,21 +131,24 @@ export default function RootLayout() {
                     }}
                 >
                     <Drawer.Screen name="Feed">
-                        {() =>
-                            isGenerating && generatingTopic ? (
-                                <GeneratingOverlay
-                                    topicTitle={
-                                        topics.find((t) => t.id === generatingTopic)?.title ?? ''
-                                    }
-                                />
-                            ) : (
+                        {() => (
+                            <View style={{ flex: 1 }}>
                                 <FeedScreen
                                     topic={activeTopic}
                                     isGenerating={isGenerating}
                                     onAddTopic={handleAddTopic}
                                 />
-                            )
-                        }
+                                {isGenerating && generatingTopic && (
+                                    <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+                                        <GeneratingOverlay
+                                            topicTitle={
+                                                topics.find((t) => t.id === generatingTopic)?.title ?? ''
+                                            }
+                                        />
+                                    </View>
+                                )}
+                            </View>
+                        )}
                     </Drawer.Screen>
                 </Drawer.Navigator>
             </NavigationContainer>

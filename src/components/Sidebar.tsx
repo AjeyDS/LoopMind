@@ -1,7 +1,7 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import {
     StyleSheet, View, Text, TouchableOpacity, ScrollView,
-    SafeAreaView, Image,
+    SafeAreaView, Alert,
 } from 'react-native';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { Topic } from '../types';
@@ -12,6 +12,7 @@ interface Props extends DrawerContentComponentProps {
     activeTopic: Topic | null;
     onSelectTopic: (topic: Topic) => void;
     onAddTopic: () => void;
+    onDeleteTopic?: (topicId: string) => void;
 }
 
 export default function Sidebar({
@@ -19,8 +20,45 @@ export default function Sidebar({
     activeTopic,
     onSelectTopic,
     onAddTopic,
+    onDeleteTopic,
     navigation,
 }: Props) {
+    const handleDelete = (topic: Topic) => {
+        Alert.alert(
+            `Delete "${topic.title}"?`,
+            'This will remove all cards for this topic.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => onDeleteTopic?.(topic.id),
+                },
+            ]
+        );
+    };
+
+    const handleMoreMenu = (topic: Topic) => {
+        Alert.alert(
+            topic.title,
+            undefined,
+            [
+                {
+                    text: 'Share',
+                    onPress: () => {
+                        // Share functionality placeholder
+                    },
+                },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => handleDelete(topic),
+                },
+                { text: 'Cancel', style: 'cancel' },
+            ]
+        );
+    };
+
     const depthColor: Record<string, string> = {
         beginner: Colors.success,
         intermediate: Colors.warning,
@@ -79,14 +117,14 @@ export default function Sidebar({
                                     )}
                                 </View>
                             </View>
-                            {/* Card count pill */}
-                            {topic.cardCount > 0 && (
-                                <View style={[styles.countPill, isActive && styles.countPillActive]}>
-                                    <Text style={[styles.countText, isActive && styles.countTextActive]}>
-                                        {topic.cardCount}
-                                    </Text>
-                                </View>
-                            )}
+                            {/* Three-dot menu */}
+                            <TouchableOpacity
+                                style={styles.moreBtn}
+                                onPress={() => handleMoreMenu(topic)}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Text style={styles.moreBtnText}>⋮</Text>
+                            </TouchableOpacity>
                             {isActive && <View style={[styles.activeLine, { backgroundColor: topic.color }]} />}
                         </TouchableOpacity>
                     );
@@ -272,5 +310,16 @@ const styles = StyleSheet.create({
         fontSize: Typography.base,
         fontWeight: Typography.weightBold,
         color: Colors.textOnDark,
+    },
+    moreBtn: {
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+        marginLeft: Spacing.xs,
+        borderRadius: Radius.sm,
+    },
+    moreBtnText: {
+        fontSize: 18,
+        color: Colors.textTertiary,
+        fontWeight: Typography.weightBold,
     },
 });

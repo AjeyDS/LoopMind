@@ -27,11 +27,18 @@ export default function ImageCard({ card }: Props) {
 
             {/* Square image */}
             <View style={styles.imageWrapper}>
-                <Image
-                    source={{ uri: card.imageUrl }}
-                    style={styles.image}
-                    resizeMode="contain"
-                />
+                {card.imageUrl ? (
+                    <Image
+                        source={{ uri: card.imageUrl }}
+                        style={styles.image}
+                        resizeMode="contain"
+                    />
+                ) : (
+                    <View style={[styles.image, { alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ fontSize: 48 }}>🖼️</Text>
+                        <Text style={{ color: '#999', marginTop: 8, fontSize: 13 }}>Image loading...</Text>
+                    </View>
+                )}
             </View>
 
             {/* Caption below image */}

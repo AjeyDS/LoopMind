@@ -238,4 +238,25 @@ export const api = {
             return 'generating';
         }
     },
+
+    /**
+     * Delete a topic and all its cards.
+     * POST /delete
+     */
+    async deleteTopic(nodeId: string): Promise<any> {
+        try {
+            const res = await fetch(`${API_URL}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: USER_ID,
+                    node_id: nodeId,
+                }),
+            });
+            return await res.json();
+        } catch (err) {
+            console.warn('[api] deleteTopic failed:', err);
+            return {};
+        }
+    },
 };
