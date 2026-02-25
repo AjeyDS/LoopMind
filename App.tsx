@@ -22,12 +22,16 @@ export default function App() {
 
     // ─── Load topics from backend on mount ──────────────────────────────
     useEffect(() => {
-        api.getTopics().then((fetched) => {
-            setTopics(fetched);
-            if (fetched.length > 0) {
-                setActiveTopic(fetched[0]);
-            }
-        });
+        api.getTopics()
+            .then((fetched) => {
+                setTopics(fetched);
+                if (fetched.length > 0) {
+                    setActiveTopic(fetched[0]);
+                }
+            })
+            .catch(() => {
+                console.warn('[App] Failed to load topics');
+            });
     }, []);
 
     const handleSelectTopic = useCallback((topic: Topic) => {
@@ -60,13 +64,16 @@ export default function App() {
         setActiveTopic(placeholderTopic);
         setGeneratingTopicId(nodeId);
 
-        // Poll the backend until the topic is ready (max 3 minutes)
+        // Poll the backend until the topic is ready (max 5 minutes)
         const startTime = Date.now();
-        const MAX_POLL_MS = 3 * 60 * 1000; // 3 minutes
+        const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
+        let attempt = 0;
 
         const poll = async () => {
-            // Safety: stop after 3 minutes and just refresh
-            if (Date.now() - startTime > MAX_POLL_MS) {
+            const elapsed = Date.now() - startTime;
+
+            // Safety: stop after max time and just refresh
+            if (elapsed > MAX_POLL_MS) {
                 console.log('[poll] Max time reached. Refreshing topics.');
                 const refreshed = await api.getTopics();
                 setTopics(refreshed);
@@ -76,6 +83,68 @@ export default function App() {
                 return;
             }
 
+            attempt++;
+            console.log(`[poll] attempt ${attempt}, elapsed ${Math.round(elapsed / 1000)}s`);
+
+            const status = await api.pollTopicStatus(nodeId);
+            if (status === 'ready') {
+                console.log(`[poll] Topic ready after ${Math.round(elapsed / 1000)}s`);
+                const refreshed = await api.getTopics();
+                setTopics(refreshed);
+                const readyTopic = refreshed.find((t) => t.id === nodeId);
+                if (readyTopic) setActiveTopic(readyTopic);
+                setGeneratingTopicId(null);
+            } else {
+                // Poll every 4s for the first 2 min, then every 8s after
+                const interval = elapsed < 120_000 ? 4000 : 8000;
+                setTimeout(poll, interval);
+            }
+        };
+        setTimeout(poll, 3000); // first poll after 3s
+    }, []);
+
+    // ─── Retry a stuck generating topic ────────────────────────────────
+    const handleRetryTopic = useCallback(async (topic: Topic) => {
+        // Delete the stuck topic first, then regenerate
+        await api.deleteTopic(topic.id);
+        setTopics((prev) => prev.filter((t) => t.id !== topic.id));
+
+        // Re-trigger generation with a new node ID
+        const nodeId = `node-${Date.now()}`;
+        api.generateTopic(topic.title, '', nodeId).catch(() => { });
+
+        const placeholderTopic: Topic = {
+            id: nodeId,
+            title: topic.title,
+            emoji: '🧠',
+            color: topic.color,
+            status: 'generating',
+            depth: topic.depth,
+            cardCount: 0,
+            cards: [],
+        };
+
+        setTopics((prev) => [placeholderTopic, ...prev]);
+        setActiveTopic(placeholderTopic);
+        setGeneratingTopicId(nodeId);
+
+        // Poll until ready
+        const startTime = Date.now();
+        const MAX_POLL_MS = 5 * 60 * 1000;
+        let attempt = 0;
+
+        const poll = async () => {
+            const elapsed = Date.now() - startTime;
+            if (elapsed > MAX_POLL_MS) {
+                const refreshed = await api.getTopics();
+                setTopics(refreshed);
+                const found = refreshed.find((t) => t.id === nodeId);
+                if (found) setActiveTopic(found);
+                setGeneratingTopicId(null);
+                return;
+            }
+            attempt++;
+            console.log(`[retry-poll] attempt ${attempt}, elapsed ${Math.round(elapsed / 1000)}s`);
             const status = await api.pollTopicStatus(nodeId);
             if (status === 'ready') {
                 const refreshed = await api.getTopics();
@@ -84,10 +153,11 @@ export default function App() {
                 if (readyTopic) setActiveTopic(readyTopic);
                 setGeneratingTopicId(null);
             } else {
-                setTimeout(poll, 5000); // poll every 5s
+                const interval = elapsed < 120_000 ? 4000 : 8000;
+                setTimeout(poll, interval);
             }
         };
-        setTimeout(poll, 5000); // first poll after 5s
+        setTimeout(poll, 3000);
     }, []);
 
     const handleDeleteTopic = useCallback(async (topicId: string) => {
@@ -110,9 +180,10 @@ export default function App() {
                 onSelectTopic={handleSelectTopic}
                 onAddTopic={handleAddTopic}
                 onDeleteTopic={handleDeleteTopic}
+                onRetryTopic={handleRetryTopic}
             />
         ),
-        [topics, activeTopic, handleSelectTopic, handleAddTopic, handleDeleteTopic]
+        [topics, activeTopic, handleSelectTopic, handleAddTopic, handleDeleteTopic, handleRetryTopic]
     );
 
     const isGenerating = !!(generatingTopicId && activeTopic?.id === generatingTopicId);

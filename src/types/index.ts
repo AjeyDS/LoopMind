@@ -45,6 +45,7 @@ export interface Topic {
     depth: Depth;
     cardCount: number;
     cards: Card[];
+    stuck?: boolean;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────

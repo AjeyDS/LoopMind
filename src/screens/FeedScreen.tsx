@@ -27,12 +27,42 @@ export default function FeedScreen({ topic, isGenerating, onAddTopic }: Props) {
     useEffect(() => {
         if (!topic || isGenerating) return;
         setCurrentIndex(0);
+        setCards([]);
         setLoading(true);
-        api.getCards(topic.id).then((c) => {
-            setCards(c);
-            setLoading(false);
-        });
-    }, [topic?.id, isGenerating]);
+
+        let cancelled = false;
+        let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const fetchCards = (isInitial: boolean) => {
+            api.getCards(topic.id)
+                .then((c) => {
+                    if (cancelled) return;
+                    setCards(c);
+                    if (isInitial) setLoading(false);
+
+                    // If any image card has no URL, images are still generating — poll again
+                    const hasPlaceholder = c.some(
+                        (card) => card.card_type === 'image' && !card.imageUrl
+                    );
+                    if (hasPlaceholder) {
+                        pollTimer = setTimeout(() => fetchCards(false), 8000);
+                    }
+                })
+                .catch(() => {
+                    if (!cancelled) {
+                        setCards([]);
+                        if (isInitial) setLoading(false);
+                    }
+                });
+        };
+
+        fetchCards(true);
+
+        return () => {
+            cancelled = true;
+            if (pollTimer) clearTimeout(pollTimer);
+        };
+    }, [topic?.id, topic?.status, isGenerating]);
 
     const progress = cards.length > 0 ? (currentIndex + 1) / cards.length : 0;
 

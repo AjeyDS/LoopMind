@@ -4,7 +4,18 @@ import {
 
 // ─── Config ─────────────────────────────────────────────────────────────
 const API_URL = 'https://lepwbriexl.execute-api.us-east-2.amazonaws.com';
+const GENERATE_URL = 'https://g4jtcoqlwnraha33r4ztsyxole0govag.lambda-url.us-east-2.on.aws';
 const USER_ID = 'u1'; // hardcoded for hackathon — replace with Cognito later
+
+// ─── Fetch with timeout ─────────────────────────────────────────────────
+function fetchWithTimeout(url: string, options?: RequestInit, timeoutMs = 15000): Promise<Response> {
+    return Promise.race([
+        fetch(url, options),
+        new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Request timed out')), timeoutMs)
+        ),
+    ]);
+}
 
 // ─── Colour palette for auto-assigned topic colours ─────────────────────
 const TOPIC_COLORS = [
@@ -93,12 +104,23 @@ function mapALUToCard(alu: BackendALU): Card | null {
 function isReadyStatus(status?: string): boolean {
     if (!status) return false;
     const s = status.toLowerCase().trim();
-    return ['ready', 'completed', 'done', 'complete', 'finished'].includes(s);
+    return ['ready', 'completed', 'done', 'complete', 'finished', 'images_pending'].includes(s);
+}
+
+/** Check if a generating topic is stuck (created > 10 min ago with 0 cards) */
+function isStuckGenerating(item: BackendTopicItem): boolean {
+    if (isReadyStatus(item.status)) return false;
+    if ((item.card_count ?? 0) > 0) return false;
+    if (!item.created_at) return false;
+    const createdMs = new Date(item.created_at).getTime();
+    const ageMs = Date.now() - createdMs;
+    return ageMs > 10 * 60 * 1000; // stuck if > 10 minutes old
 }
 
 /** Map a backend topic item to our frontend Topic type */
 function mapBackendTopic(item: BackendTopicItem, index: number): Topic {
-    console.log(`[api] topic "${item.title}" → status: "${item.status}", icon: "${item.icon}", card_count: ${item.card_count}`);
+    const stuck = isStuckGenerating(item);
+    console.log(`[api] topic "${item.title}" → status: "${item.status}", icon: "${item.icon}", card_count: ${item.card_count}${stuck ? ' (STUCK)' : ''}`);
     return {
         id: item.node_id,
         title: item.title ?? 'Untitled',
@@ -108,6 +130,7 @@ function mapBackendTopic(item: BackendTopicItem, index: number): Topic {
         depth: 'intermediate', // backend doesn't track depth; default
         cardCount: item.card_count ?? 0,
         cards: [],
+        stuck,
     };
 }
 
@@ -119,7 +142,7 @@ export const api = {
      */
     async getTopics(): Promise<Topic[]> {
         try {
-            const res = await fetch(`${API_URL}/feed?user_id=${USER_ID}`);
+            const res = await fetchWithTimeout(`${API_URL}/feed?user_id=${USER_ID}`);
             const data = await res.json();
             console.log('[api] getTopics raw response:', JSON.stringify(data).slice(0, 500));
 
@@ -142,7 +165,7 @@ export const api = {
      */
     async getCards(nodeId: string): Promise<Card[]> {
         try {
-            const res = await fetch(
+            const res = await fetchWithTimeout(
                 `${API_URL}/feed?user_id=${USER_ID}&node_id=${nodeId}`
             );
             const data = await res.json();
@@ -172,31 +195,23 @@ export const api = {
     ): Promise<{ node_id: string;[key: string]: any }> {
         const id = nodeId ?? `node-${Date.now()}`;
 
-        // Fire-and-forget with a 5s timeout.
-        // The backend Lambda takes 60s+ but the Step Function pipeline
-        // continues in the background. We abort early so the caller can poll.
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-        try {
-            const res = await fetch(`${API_URL}/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: USER_ID,
-                    node_id: id,
-                    title,
-                    raw_text: rawText || `Tell me about ${title}`,
-                }),
-                signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
-            const data = await res.json();
-            console.log('[api] generateTopic response:', JSON.stringify(data));
-        } catch (err) {
-            clearTimeout(timeoutId);
-            console.log('[api] generateTopic request aborted/timed out (expected). Generation continues in background.');
-        }
+        // True fire-and-forget: send the request and don't wait for a
+        // response at all.  API Gateway has a 29 s hard cap and the Lambda
+        // takes 60 s+, so the gateway will always 504.  We don't need the
+        // response — the caller polls /feed until the topic is ready.
+        fetch(GENERATE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: USER_ID,
+                node_id: id,
+                title,
+                raw_text: rawText || `Tell me about ${title}`,
+            }),
+        })
+            .then((res) => res.json())
+            .then((data) => console.log('[api] generateTopic response:', JSON.stringify(data)))
+            .catch(() => console.log('[api] generateTopic request timed out (expected). Generation continues on backend.'));
 
         return { node_id: id };
     },
@@ -207,7 +222,7 @@ export const api = {
      */
     async markLearnt(aluId: string, nodeId: string): Promise<any> {
         try {
-            const res = await fetch(`${API_URL}/learn`, {
+            const res = await fetchWithTimeout(`${API_URL}/learn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -245,7 +260,7 @@ export const api = {
      */
     async deleteTopic(nodeId: string): Promise<any> {
         try {
-            const res = await fetch(`${API_URL}/delete`, {
+            const res = await fetchWithTimeout(`${API_URL}/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

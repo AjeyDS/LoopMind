@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated as RNAnimated } from 'react-native';
-import { Colors, Typography, Spacing } from '../theme';
+import { StyleSheet, View, Text, Animated as RNAnimated, TouchableOpacity, SafeAreaView } from 'react-native';
+import { DrawerActions, useNavigation } from '@react-navigation/native';
+import { Colors, Typography, Spacing, Radius } from '../theme';
 
 interface Props {
     topicTitle: string;
 }
 
 export default function GeneratingOverlay({ topicTitle }: Props) {
+    const navigation = useNavigation();
     const pulse = useRef(new RNAnimated.Value(1)).current;
     const rotate = useRef(new RNAnimated.Value(0)).current;
     const dot0 = useRef(new RNAnimated.Value(0)).current;
@@ -44,6 +46,19 @@ export default function GeneratingOverlay({ topicTitle }: Props) {
 
     return (
         <View style={styles.container}>
+            {/* Hamburger menu to access sidebar */}
+            <SafeAreaView style={styles.topBarSafe}>
+                <TouchableOpacity
+                    style={styles.hamburger}
+                    onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                    <View style={styles.hamLine} />
+                    <View style={[styles.hamLine, { width: 18 }]} />
+                    <View style={styles.hamLine} />
+                </TouchableOpacity>
+            </SafeAreaView>
+
             {/* Pulsing blob */}
             <View style={styles.blobOuter}>
                 <RNAnimated.View style={[styles.blobInner, { transform: [{ scale: pulse }] }]}>
@@ -81,6 +96,23 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: Spacing['2xl'],
+    },
+    topBarSafe: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        zIndex: 10,
+    },
+    hamburger: {
+        gap: 4,
+        padding: Spacing.base,
+        paddingTop: Spacing['2xl'],
+    },
+    hamLine: {
+        height: 2,
+        width: 22,
+        backgroundColor: Colors.textPrimary,
+        borderRadius: Radius.full,
     },
     blobOuter: {
         width: 140,

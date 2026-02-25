@@ -13,6 +13,7 @@ interface Props extends DrawerContentComponentProps {
     onSelectTopic: (topic: Topic) => void;
     onAddTopic: () => void;
     onDeleteTopic?: (topicId: string) => void;
+    onRetryTopic?: (topic: Topic) => void;
 }
 
 export default function Sidebar({
@@ -21,6 +22,7 @@ export default function Sidebar({
     onSelectTopic,
     onAddTopic,
     onDeleteTopic,
+    onRetryTopic,
     navigation,
 }: Props) {
     const handleDelete = (topic: Topic) => {
@@ -39,23 +41,34 @@ export default function Sidebar({
     };
 
     const handleMoreMenu = (topic: Topic) => {
+        const options: any[] = [];
+
+        if (topic.status === 'generating') {
+            options.push({
+                text: 'Retry Generation',
+                onPress: () => onRetryTopic?.(topic),
+            });
+        }
+
+        options.push(
+            {
+                text: 'Share',
+                onPress: () => {
+                    // Share functionality placeholder
+                },
+            },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => handleDelete(topic),
+            },
+            { text: 'Cancel', style: 'cancel' },
+        );
+
         Alert.alert(
             topic.title,
-            undefined,
-            [
-                {
-                    text: 'Share',
-                    onPress: () => {
-                        // Share functionality placeholder
-                    },
-                },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => handleDelete(topic),
-                },
-                { text: 'Cancel', style: 'cancel' },
-            ]
+            topic.status === 'generating' ? 'This topic seems stuck. Try regenerating it.' : undefined,
+            options,
         );
     };
 
@@ -112,7 +125,10 @@ export default function Sidebar({
                                 <View style={styles.topicMeta}>
                                     <View style={[styles.dot, { backgroundColor: depthColor[topic.depth] }]} />
                                     <Text style={styles.topicDepth}>{topic.depth}</Text>
-                                    {topic.status === 'generating' && (
+                                    {topic.status === 'generating' && topic.stuck && (
+                                        <Text style={styles.stuckTag}>• Stuck — tap ⋮ to retry</Text>
+                                    )}
+                                    {topic.status === 'generating' && !topic.stuck && (
                                         <Text style={styles.generatingTag}>• Generating…</Text>
                                     )}
                                 </View>
@@ -257,6 +273,11 @@ const styles = StyleSheet.create({
     generatingTag: {
         fontSize: Typography.xs,
         color: Colors.primary,
+        fontWeight: Typography.weightMedium,
+    },
+    stuckTag: {
+        fontSize: Typography.xs,
+        color: Colors.error,
         fontWeight: Typography.weightMedium,
     },
     countPill: {
